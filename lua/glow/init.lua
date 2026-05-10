@@ -10,9 +10,10 @@ end
 
 local config = {
   glow_path = vim.fn.exepath("glow"),
-  width = 120,          -- characters
-  height_ratio = 0.8,   -- max height as ratio of screen
-  border = "rounded",
+  width = 120,          -- characters (also passed to glow -w)
+  height_ratio = 0.8,   -- max height as ratio of screen (float only)
+  border = "rounded",   -- float only
+  position = "float",   -- "float" or "right"
   pager = false,
   style = "dark",
 }
@@ -52,24 +53,6 @@ local function cleanup()
   end
 end
 
-local function get_window_config()
-  local max_height = math.floor(vim.o.lines * config.height_ratio)
-  local height = math.min(max_height, vim.o.lines - 4)
-  local width = math.min(config.width, vim.o.columns - 4)
-  local col = math.floor((vim.o.columns - width) / 2)
-  local row = math.floor((vim.o.lines - height) / 2)
-
-  return {
-    relative = "editor",
-    width = width,
-    height = height,
-    col = col,
-    row = row,
-    style = "minimal",
-    border = config.border,
-  }
-end
-
 local function is_md_file(path)
   local ext = vim.fn.fnamemodify(path, ":e"):lower()
   local md_exts = {
@@ -98,10 +81,41 @@ local function tmp_file()
   return tmp
 end
 
+local function get_float_config()
+  local max_height = math.floor(vim.o.lines * config.height_ratio)
+  local height = math.min(max_height, vim.o.lines - 4)
+  local width = math.min(config.width, vim.o.columns - 4)
+  local col = math.floor((vim.o.columns - width) / 2)
+  local row = math.floor((vim.o.lines - height) / 2)
+
+  return {
+    relative = "editor",
+    width = width,
+    height = height,
+    col = col,
+    row = row,
+    style = "minimal",
+    border = config.border,
+  }
+end
+
 local function open_glow_window(cmd_args)
-  -- Create preview buffer and floating window
+  -- Create preview buffer
   local buf = vim.api.nvim_create_buf(false, true)
-  local win = vim.api.nvim_open_win(buf, true, get_window_config())
+  local win
+
+  if config.position == "right" then
+    -- Open vertical split to the right
+    vim.cmd("rightbelow vnew")
+    win = vim.api.nvim_get_current_win()
+    vim.api.nvim_win_set_buf(win, buf)
+    -- Resize to desired width
+    local win_width = math.min(config.width, vim.o.columns - 4)
+    vim.api.nvim_win_set_width(win, win_width)
+  else
+    -- Default: floating window
+    win = vim.api.nvim_open_win(buf, true, get_float_config())
+  end
 
   set_buf_opt("bufhidden", "wipe", { buf = buf })
   set_buf_opt("filetype", "glow", { buf = buf })
@@ -127,10 +141,10 @@ local function open_glow_window(cmd_args)
     callback = close_fn,
   })
 
-  -- Create terminal channel in the buffer to receive glow's ANSI output
+  -- Create terminal channel to receive glow's ANSI output
   local chan = vim.api.nvim_open_term(buf, {})
 
-  -- Output callback: send glow's stdout/stderr to the terminal channel
+  -- Output callback
   local function on_output(err, data)
     if err then
       vim.schedule(function()
@@ -139,7 +153,6 @@ local function open_glow_window(cmd_args)
       return
     end
     if data then
-      -- nvim_chan_send expects data with \r\n line endings for terminal display
       local lines = vim.split(data, "\n", {})
       for _, line in ipairs(lines) do
         vim.api.nvim_chan_send(chan, line .. "\r\n")
@@ -152,7 +165,7 @@ local function open_glow_window(cmd_args)
   active_job.stdout = uv.new_pipe(false)
   active_job.stderr = uv.new_pipe(false)
 
-  -- Process exit callback
+  -- Exit callback
   local function on_exit()
     stop_job()
     if active_tmpfile then
@@ -161,7 +174,7 @@ local function open_glow_window(cmd_args)
     end
   end
 
-  -- Spawn glow process
+  -- Spawn glow
   local cmd = table.remove(cmd_args, 1)
   local spawn_opts = {
     args = cmd_args,
@@ -176,7 +189,6 @@ local function open_glow_window(cmd_args)
     return
   end
 
-  -- Start reading from pipes
   uv.read_start(active_job.stdout, vim.schedule_wrap(on_output))
   uv.read_start(active_job.stderr, vim.schedule_wrap(on_output))
 
@@ -186,7 +198,6 @@ local function open_glow_window(cmd_args)
 end
 
 function M.glow(file_path)
-  -- Resolve glow binary path
   local glow_bin = config.glow_path
   if glow_bin == "" then
     glow_bin = vim.fn.exepath("glow")
@@ -213,7 +224,6 @@ function M.glow(file_path)
     end
     file = file_path
   else
-    -- Current buffer: use file path if saved, else write to temp file
     local buf_path = vim.fn.expand("%:p")
     if buf_path ~= "" and vim.fn.filereadable(buf_path) == 1 and is_md_file(buf_path) then
       file = buf_path
@@ -239,9 +249,7 @@ function M.glow(file_path)
   end
   table.insert(cmd_args, file)
 
-  -- Stop any existing preview job
   cleanup()
-
   open_glow_window(cmd_args)
 end
 
