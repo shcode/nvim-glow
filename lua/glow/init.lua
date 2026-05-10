@@ -1,21 +1,16 @@
 local M = {}
 
--- Forward compatibility: vim.uv (0.10+) vs vim.loop (legacy)
 local uv = vim.uv or vim.loop
-
--- Compatibility: nvim_set_option_value (0.9+) vs deprecated nvim_buf_set_option
-local set_buf_opt = vim.api.nvim_set_option_value or function(name, value, opts)
-  vim.api.nvim_buf_set_option(opts.buf, name, value)
-end
 
 local config = {
   glow_path = vim.fn.exepath("glow"),
-  width = 120,          -- characters (also passed to glow -w)
-  height_ratio = 0.8,   -- max height as ratio of screen (float only)
-  border = "rounded",   -- float only
-  position = "float",   -- "float" or "right"
+  width = 120,
+  height_ratio = 0.8,
+  border = "rounded",
+  position = "float",
   pager = false,
   style = "dark",
+  tui = false,
 }
 
 local active_job = nil
@@ -56,16 +51,9 @@ end
 local function is_md_file(path)
   local ext = vim.fn.fnamemodify(path, ":e"):lower()
   local md_exts = {
-    md = true,
-    markdown = true,
-    mkd = true,
-    mkdn = true,
-    mdwn = true,
-    mdown = true,
-    mdtxt = true,
-    mdtext = true,
-    rmd = true,
-    wiki = true,
+    md = true, markdown = true, mkd = true, mkdn = true,
+    mdwn = true, mdown = true, mdtxt = true, mdtext = true,
+    rmd = true, wiki = true,
   }
   return md_exts[ext] or false
 end
@@ -85,54 +73,94 @@ local function get_float_config()
   local max_height = math.floor(vim.o.lines * config.height_ratio)
   local height = math.min(max_height, vim.o.lines - 4)
   local width = math.min(config.width, vim.o.columns - 4)
-  local col = math.floor((vim.o.columns - width) / 2)
-  local row = math.floor((vim.o.lines - height) / 2)
-
   return {
     relative = "editor",
     width = width,
     height = height,
-    col = col,
-    row = row,
+    col = math.floor((vim.o.columns - width) / 2),
+    row = math.floor((vim.o.lines - height) / 2),
     style = "minimal",
     border = config.border,
   }
 end
 
-local function open_glow_window(cmd_args)
-  -- Create preview buffer
+local function open_tui_preview(file)
   local buf = vim.api.nvim_create_buf(false, true)
   local win
 
   if config.position == "right" then
-    -- Open vertical split to the right
     vim.cmd("rightbelow vnew")
     win = vim.api.nvim_get_current_win()
     vim.api.nvim_win_set_buf(win, buf)
-    -- Resize to desired width
-    local win_width = math.min(config.width, vim.o.columns - 4)
-    vim.api.nvim_win_set_width(win, win_width)
+    vim.api.nvim_win_set_width(win, math.min(config.width, vim.o.columns - 4))
   else
-    -- Default: floating window
     win = vim.api.nvim_open_win(buf, true, get_float_config())
   end
 
-  set_buf_opt("bufhidden", "wipe", { buf = buf })
-  set_buf_opt("filetype", "glow", { buf = buf })
+  vim.api.nvim_set_option_value("bufhidden", "wipe", { buf = buf })
+  vim.api.nvim_set_option_value("filetype", "glow", { buf = buf })
 
-  -- Keymaps
-  local keymap_opts = { silent = true, buffer = buf, nowait = true }
+  -- Open glow TUI in terminal
+  local term_cmd = { config.glow_path, "-t", "-w", config.width, file }
+  vim.api.nvim_buf_call(buf, function()
+    vim.fn.termopen(term_cmd)
+  end)
+
+  local job_id = vim.b[buf].terminal_job_id
+
+  local function close_fn()
+    if job_id then
+      vim.fn.jobstop(job_id)
+    end
+    cleanup()
+    if vim.api.nvim_win_is_valid(win) then
+      vim.api.nvim_win_close(win, true)
+    end
+  end
+
+  local opts = { silent = true, buffer = buf, nowait = true }
+  vim.keymap.set("n", "q", close_fn, opts)
+  vim.keymap.set("n", "<Esc>", close_fn, opts)
+  vim.keymap.set("n", "<C-c>", close_fn, opts)
+  vim.keymap.set("t", "<C-c>", close_fn, opts)
+
+  local augroup = vim.api.nvim_create_augroup("GlowPreview_" .. buf, { clear = true })
+  vim.api.nvim_create_autocmd("BufLeave", {
+    group = augroup,
+    buffer = buf,
+    once = true,
+    callback = close_fn,
+  })
+end
+
+local function open_cli_preview(cmd_args)
+  local buf = vim.api.nvim_create_buf(false, true)
+  local win
+
+  if config.position == "right" then
+    vim.cmd("rightbelow vnew")
+    win = vim.api.nvim_get_current_win()
+    vim.api.nvim_win_set_buf(win, buf)
+    vim.api.nvim_win_set_width(win, math.min(config.width, vim.o.columns - 4))
+  else
+    win = vim.api.nvim_open_win(buf, true, get_float_config())
+  end
+
+  vim.api.nvim_set_option_value("bufhidden", "wipe", { buf = buf })
+  vim.api.nvim_set_option_value("filetype", "glow", { buf = buf })
+
   local function close_fn()
     cleanup()
     if vim.api.nvim_win_is_valid(win) then
       vim.api.nvim_win_close(win, true)
     end
   end
-  vim.keymap.set("n", "q", close_fn, keymap_opts)
-  vim.keymap.set("n", "<Esc>", close_fn, keymap_opts)
-  vim.keymap.set("n", "<C-c>", close_fn, keymap_opts)
 
-  -- Close on BufLeave
+  local opts = { silent = true, buffer = buf, nowait = true }
+  vim.keymap.set("n", "q", close_fn, opts)
+  vim.keymap.set("n", "<Esc>", close_fn, opts)
+  vim.keymap.set("n", "<C-c>", close_fn, opts)
+
   local augroup = vim.api.nvim_create_augroup("GlowPreview_" .. buf, { clear = true })
   vim.api.nvim_create_autocmd("BufLeave", {
     group = augroup,
@@ -141,10 +169,8 @@ local function open_glow_window(cmd_args)
     callback = close_fn,
   })
 
-  -- Create terminal channel to receive glow's ANSI output
   local chan = vim.api.nvim_open_term(buf, {})
 
-  -- Output callback
   local function on_output(err, data)
     if err then
       vim.schedule(function()
@@ -153,19 +179,16 @@ local function open_glow_window(cmd_args)
       return
     end
     if data then
-      local lines = vim.split(data, "\n", {})
-      for _, line in ipairs(lines) do
+      for _, line in ipairs(vim.split(data, "\n", {})) do
         vim.api.nvim_chan_send(chan, line .. "\r\n")
       end
     end
   end
 
-  -- Setup pipes
   active_job = {}
   active_job.stdout = uv.new_pipe(false)
   active_job.stderr = uv.new_pipe(false)
 
-  -- Exit callback
   local function on_exit()
     stop_job()
     if active_tmpfile then
@@ -174,14 +197,11 @@ local function open_glow_window(cmd_args)
     end
   end
 
-  -- Spawn glow
   local cmd = table.remove(cmd_args, 1)
-  local spawn_opts = {
+  active_job.handle = uv.spawn(cmd, {
     args = cmd_args,
     stdio = { nil, active_job.stdout, active_job.stderr },
-  }
-
-  active_job.handle = uv.spawn(cmd, spawn_opts, vim.schedule_wrap(on_exit))
+  }, vim.schedule_wrap(on_exit))
 
   if not active_job.handle then
     vim.notify("[glow] Failed to spawn process: " .. cmd, vim.log.levels.ERROR)
@@ -211,7 +231,6 @@ function M.glow(file_path)
     return
   end
 
-  -- Determine the file to preview
   local file
   if file_path and file_path ~= "" then
     if vim.fn.filereadable(file_path) == 0 then
@@ -228,9 +247,8 @@ function M.glow(file_path)
     if buf_path ~= "" and vim.fn.filereadable(buf_path) == 1 and is_md_file(buf_path) then
       file = buf_path
     else
-      local ft = vim.bo.filetype
       local md_fts = { markdown = true, ["markdown.pandoc"] = true, ["markdown.gfm"] = true }
-      if not md_fts[ft] then
+      if not md_fts[vim.bo.filetype] then
         vim.notify("[glow] Current buffer is not markdown", vim.log.levels.ERROR)
         return
       end
@@ -242,15 +260,18 @@ function M.glow(file_path)
     end
   end
 
-  -- Build command arguments
-  local cmd_args = { glow_bin, "-s", config.style, "-w", config.width }
-  if config.pager then
-    table.insert(cmd_args, "-p")
-  end
-  table.insert(cmd_args, file)
-
   cleanup()
-  open_glow_window(cmd_args)
+
+  if config.tui then
+    open_tui_preview(file)
+  else
+    local cmd_args = { glow_bin, "-s", config.style, "-w", config.width }
+    if config.pager then
+      table.insert(cmd_args, "-p")
+    end
+    table.insert(cmd_args, file)
+    open_cli_preview(cmd_args)
+  end
 end
 
 function M.setup(opts)

@@ -9,7 +9,12 @@ Neovim plugin to preview Markdown files using [glow](https://github.com/charmbra
 
 ## How It Works
 
-The plugin runs `glow` inside a terminal buffer so ANSI colors and styles render natively. Choose between a floating window (default) or a vertical split on the right. It also works on unsaved buffers by writing them to a temporary file.
+The plugin previews Markdown using [glow](https://github.com/charmbracelet/glow). It supports two rendering modes:
+
+- **CLI mode** (default): Runs `glow` in a terminal buffer. Outputs text formatting (bold, italic, underline) but **no colors** — this is a limitation of glow's CLI renderer.
+- **TUI mode**: Runs `glow -t` in a real terminal buffer. Shows glow's full interactive UI with **colors, mouse, and navigation**.
+
+Choose between a floating window (default) or a vertical split on the right. Works with unsaved buffers too.
 
 ## Installation
 
@@ -61,6 +66,16 @@ Or preview a specific file:
 
 Preview also auto-closes when you leave the buffer.
 
+### Colors
+
+Glow's CLI renderer outputs text formatting (bold, italic, underline) but **does not output color ANSI codes**. To see glow with full colors, enable TUI mode:
+
+```lua
+require("glow").setup({ tui = true })
+```
+
+In TUI mode the preview runs `glow -t` inside a `:terminal` buffer. Use `q` or arrow keys to navigate, `<C-c>` to close.
+
 ## Configuration
 
 ```lua
@@ -72,6 +87,7 @@ require("glow").setup({
   position = "float",   -- "float" or "right" (vertical split)
   pager = false,        -- Enable pager mode (-p flag)
   style = "dark",       -- Color style: "dark", "light", "notty"
+  tui = false,          -- Use glow's interactive TUI for full colors
 })
 ```
 
