@@ -69,7 +69,7 @@ local function open_glow_preview(file)
     vim.cmd("rightbelow vnew")
     win = vim.api.nvim_get_current_win()
     vim.api.nvim_win_set_buf(win, buf)
-    vim.api.nvim_win_set_width(win, config.width)
+    vim.api.nvim_win_set_width(win, config.width + 4)
   else
     win = vim.api.nvim_open_win(buf, true, get_float_config())
   end
@@ -111,11 +111,7 @@ local function open_glow_preview(file)
           cleanup()
           if not config.pager and vim.api.nvim_buf_is_valid(buf) then
             -- Enter normal mode so user can scroll the rendered output
-            vim.api.nvim_feedkeys(
-              vim.api.nvim_replace_termcodes("<C-\\><C-n>", true, false, true),
-              "n",
-              false
-            )
+            vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("<C-\\><C-n>", true, false, true), "n", false)
             -- Move cursor to top of buffer
             vim.api.nvim_buf_call(buf, function()
               vim.cmd("normal! gg")
@@ -139,10 +135,7 @@ function M.glow(file_path)
   end
 
   if vim.fn.executable(glow_bin) == 0 then
-    vim.notify(
-      "[glow] glow binary not found. Install it: https://github.com/charmbracelet/glow",
-      vim.log.levels.ERROR
-    )
+    vim.notify("[glow] glow binary not found. Install it: https://github.com/charmbracelet/glow", vim.log.levels.ERROR)
     return
   end
 
