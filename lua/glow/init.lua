@@ -1,7 +1,5 @@
 local M = {}
 
-local uv = vim.uv or vim.loop
-
 local config = {
   glow_path = vim.fn.exepath("glow"),
   width = 120,
@@ -10,38 +8,11 @@ local config = {
   position = "float",
   pager = false,
   style = "dark",
-  tui = false,
 }
 
-local active_job = nil
 local active_tmpfile = nil
 
-local function safe_close(handle)
-  if handle and not handle:is_closing() then
-    handle:close()
-  end
-end
-
-local function stop_job()
-  if not active_job then
-    return
-  end
-  if active_job.stdout then
-    active_job.stdout:read_stop()
-    safe_close(active_job.stdout)
-  end
-  if active_job.stderr then
-    active_job.stderr:read_stop()
-    safe_close(active_job.stderr)
-  end
-  if active_job.handle then
-    safe_close(active_job.handle)
-  end
-  active_job = nil
-end
-
 local function cleanup()
-  stop_job()
   if active_tmpfile then
     vim.fn.delete(active_tmpfile)
     active_tmpfile = nil
@@ -84,7 +55,7 @@ local function get_float_config()
   }
 end
 
-local function open_tui_preview(file)
+local function open_glow_preview(file)
   local buf = vim.api.nvim_create_buf(false, true)
   local win
 
@@ -100,18 +71,13 @@ local function open_tui_preview(file)
   vim.api.nvim_set_option_value("bufhidden", "wipe", { buf = buf })
   vim.api.nvim_set_option_value("filetype", "glow", { buf = buf })
 
-  -- Open glow TUI in terminal
-  local term_cmd = { config.glow_path, "-t", "-w", config.width, file }
-  vim.api.nvim_buf_call(buf, function()
-    vim.fn.termopen(term_cmd)
-  end)
-
-  local job_id = vim.b[buf].terminal_job_id
+  local cmd = { config.glow_path, "-s", config.style, "-w", config.width }
+  if config.pager then
+    table.insert(cmd, "-p")
+  end
+  table.insert(cmd, file)
 
   local function close_fn()
-    if job_id then
-      vim.fn.jobstop(job_id)
-    end
     cleanup()
     if vim.api.nvim_win_is_valid(win) then
       vim.api.nvim_win_close(win, true)
@@ -131,86 +97,28 @@ local function open_tui_preview(file)
     once = true,
     callback = close_fn,
   })
-end
 
-local function open_cli_preview(cmd_args)
-  local buf = vim.api.nvim_create_buf(false, true)
-  local win
-
-  if config.position == "right" then
-    vim.cmd("rightbelow vnew")
-    win = vim.api.nvim_get_current_win()
-    vim.api.nvim_win_set_buf(win, buf)
-    vim.api.nvim_win_set_width(win, math.min(config.width, vim.o.columns - 4))
-  else
-    win = vim.api.nvim_open_win(buf, true, get_float_config())
-  end
-
-  vim.api.nvim_set_option_value("bufhidden", "wipe", { buf = buf })
-  vim.api.nvim_set_option_value("filetype", "glow", { buf = buf })
-
-  local function close_fn()
-    cleanup()
-    if vim.api.nvim_win_is_valid(win) then
-      vim.api.nvim_win_close(win, true)
-    end
-  end
-
-  local opts = { silent = true, buffer = buf, nowait = true }
-  vim.keymap.set("n", "q", close_fn, opts)
-  vim.keymap.set("n", "<Esc>", close_fn, opts)
-  vim.keymap.set("n", "<C-c>", close_fn, opts)
-
-  local augroup = vim.api.nvim_create_augroup("GlowPreview_" .. buf, { clear = true })
-  vim.api.nvim_create_autocmd("BufLeave", {
-    group = augroup,
-    buffer = buf,
-    once = true,
-    callback = close_fn,
-  })
-
-  local chan = vim.api.nvim_open_term(buf, {})
-
-  local function on_output(err, data)
-    if err then
-      vim.schedule(function()
-        vim.notify("[glow] " .. vim.inspect(err), vim.log.levels.ERROR)
-      end)
-      return
-    end
-    if data then
-      for _, line in ipairs(vim.split(data, "\n", {})) do
-        vim.api.nvim_chan_send(chan, line .. "\r\n")
-      end
-    end
-  end
-
-  active_job = {}
-  active_job.stdout = uv.new_pipe(false)
-  active_job.stderr = uv.new_pipe(false)
-
-  local function on_exit()
-    stop_job()
-    if active_tmpfile then
-      vim.fn.delete(active_tmpfile)
-      active_tmpfile = nil
-    end
-  end
-
-  local cmd = table.remove(cmd_args, 1)
-  active_job.handle = uv.spawn(cmd, {
-    args = cmd_args,
-    stdio = { nil, active_job.stdout, active_job.stderr },
-  }, vim.schedule_wrap(on_exit))
-
-  if not active_job.handle then
-    vim.notify("[glow] Failed to spawn process: " .. cmd, vim.log.levels.ERROR)
-    cleanup()
-    return
-  end
-
-  uv.read_start(active_job.stdout, vim.schedule_wrap(on_output))
-  uv.read_start(active_job.stderr, vim.schedule_wrap(on_output))
+  vim.api.nvim_buf_call(buf, function()
+    vim.fn.termopen(cmd, {
+      on_exit = function()
+        vim.schedule(function()
+          cleanup()
+          if not config.pager and vim.api.nvim_buf_is_valid(buf) then
+            -- Enter normal mode so user can scroll the rendered output
+            vim.api.nvim_feedkeys(
+              vim.api.nvim_replace_termcodes("<C-\\><C-n>", true, false, true),
+              "n",
+              false
+            )
+            -- Move cursor to top of buffer
+            vim.api.nvim_buf_call(buf, function()
+              vim.cmd("normal! gg")
+            end)
+          end
+        end)
+      end,
+    })
+  end)
 
   if config.pager then
     vim.cmd("startinsert")
@@ -261,17 +169,7 @@ function M.glow(file_path)
   end
 
   cleanup()
-
-  if config.tui then
-    open_tui_preview(file)
-  else
-    local cmd_args = { glow_bin, "-s", config.style, "-w", config.width }
-    if config.pager then
-      table.insert(cmd_args, "-p")
-    end
-    table.insert(cmd_args, file)
-    open_cli_preview(cmd_args)
-  end
+  open_glow_preview(file)
 end
 
 function M.setup(opts)
