@@ -9,7 +9,7 @@ Neovim plugin to preview Markdown files using [glow](https://github.com/charmbra
 
 ## How It Works
 
-The plugin runs `glow` inside a `:terminal` buffer, so ANSI colors and styles render natively. Glow auto-detects the terminal width, so the output always fits the window without wrapping. After glow finishes rendering, the buffer switches to normal mode — you can scroll up and down with `j/k`, `<C-d>`, `<C-u>`, etc.
+The plugin runs `glow` inside a `:terminal` buffer, so ANSI colors and styles render natively. The `-w` flag is passed with the actual window width, so the output always fits without wrapping. After glow finishes rendering, the buffer switches to normal mode — you can scroll up and down with `j/k`, `<C-d>`, `<C-u>`, etc.
 
 Choose between a floating window (default) or a vertical split on the right. Works with unsaved buffers too.
 
@@ -75,7 +75,7 @@ After glow renders, the preview window is in normal mode. Use any vim motion to 
 ```lua
 require("glow").setup({
   glow_path = "",       -- Auto-detected from $PATH; override if needed
-  width = 120,          -- Window width in characters (glow auto-detects its own width)
+  width = 120,          -- Window width in characters (also passed to glow -w)
   height_ratio = 0.8,   -- Max window height as ratio of screen (float only)
   border = "rounded",   -- Border style (float only)
   position = "float",   -- "float" or "right" (vertical split)

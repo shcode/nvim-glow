@@ -43,12 +43,11 @@ end
 local function get_float_config()
   local max_height = math.floor(vim.o.lines * config.height_ratio)
   local height = math.min(max_height, vim.o.lines - 4)
-  local width = math.min(config.width, vim.o.columns - 4)
   return {
     relative = "editor",
-    width = width,
+    width = config.width,
     height = height,
-    col = math.floor((vim.o.columns - width) / 2),
+    col = math.floor((vim.o.columns - config.width) / 2),
     row = math.floor((vim.o.lines - height) / 2),
     style = "minimal",
     border = config.border,
@@ -63,7 +62,7 @@ local function open_glow_preview(file)
     vim.cmd("rightbelow vnew")
     win = vim.api.nvim_get_current_win()
     vim.api.nvim_win_set_buf(win, buf)
-    vim.api.nvim_win_set_width(win, math.min(config.width, vim.o.columns - 4))
+    vim.api.nvim_win_set_width(win, config.width)
   else
     win = vim.api.nvim_open_win(buf, true, get_float_config())
   end
@@ -71,7 +70,8 @@ local function open_glow_preview(file)
   vim.api.nvim_set_option_value("bufhidden", "wipe", { buf = buf })
   vim.api.nvim_set_option_value("filetype", "glow", { buf = buf })
 
-  local cmd = { config.glow_path, "-s", config.style }
+  local win_width = vim.api.nvim_win_get_width(win)
+  local cmd = { config.glow_path, "-s", config.style, "-w", win_width }
   if config.pager then
     table.insert(cmd, "-p")
   end
