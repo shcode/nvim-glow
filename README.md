@@ -7,6 +7,10 @@ Neovim plugin to preview Markdown files using [glow](https://github.com/charmbra
 - [Neovim](https://neovim.io/) >= 0.7 (tested up to 0.12/nightly)
 - [glow](https://github.com/charmbracelet/glow) installed and available in `$PATH`
 
+## How It Works
+
+The plugin opens a floating terminal buffer and runs `glow` inside it. This lets glow's ANSI colors and styles render natively, giving you the full glow experience inside Neovim. It also works on unsaved buffers by writing them to a temporary file.
+
 ## Installation
 
 ### lazy.nvim
@@ -61,7 +65,7 @@ Preview also auto-closes when you leave the buffer.
 
 ```lua
 require("glow").setup({
-  glow_path = "glow",   -- Path to glow binary
+  glow_path = "",       -- Auto-detected from $PATH; override if needed
   width = 0.8,          -- Window width (0-1 ratio)
   height = 0.8,         -- Window height (0-1 ratio)
   border = "rounded",   -- Border style: "none", "single", "double", "rounded", "solid", "shadow"
