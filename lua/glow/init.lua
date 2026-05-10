@@ -22,9 +22,16 @@ end
 local function is_md_file(path)
   local ext = vim.fn.fnamemodify(path, ":e"):lower()
   local md_exts = {
-    md = true, markdown = true, mkd = true, mkdn = true,
-    mdwn = true, mdown = true, mdtxt = true, mdtext = true,
-    rmd = true, wiki = true,
+    md = true,
+    markdown = true,
+    mkd = true,
+    mkdn = true,
+    mdwn = true,
+    mdown = true,
+    mdtxt = true,
+    mdtext = true,
+    rmd = true,
+    wiki = true,
   }
   return md_exts[ext] or false
 end
@@ -99,7 +106,7 @@ local function open_glow_preview(file)
   })
 
   vim.api.nvim_buf_call(buf, function()
-    vim.fn.termopen(cmd, {
+    vim.fn.jobstart(cmd, {
       on_exit = function()
         vim.schedule(function()
           cleanup()
@@ -117,6 +124,7 @@ local function open_glow_preview(file)
           end
         end)
       end,
+      term = true,
     })
   end)
 
