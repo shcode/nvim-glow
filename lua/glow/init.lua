@@ -77,8 +77,7 @@ local function open_glow_preview(file)
   vim.api.nvim_set_option_value("bufhidden", "wipe", { buf = buf })
   vim.api.nvim_set_option_value("filetype", "glow", { buf = buf })
 
-  local win_width = vim.api.nvim_win_get_width(win)
-  local cmd = { config.glow_path, "-s", config.style, "-w", win_width }
+  local cmd = { config.glow_path, "-s", config.style, "-w", config.width }
   if config.pager then
     table.insert(cmd, "-p")
   end
