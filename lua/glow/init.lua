@@ -10,8 +10,8 @@ end
 
 local config = {
   glow_path = vim.fn.exepath("glow"),
-  width = 0.8,
-  height = 0.8,
+  width = 120,          -- characters
+  height_ratio = 0.8,   -- max height as ratio of screen
   border = "rounded",
   pager = false,
   style = "dark",
@@ -53,8 +53,9 @@ local function cleanup()
 end
 
 local function get_window_config()
-  local width = math.floor(vim.o.columns * config.width)
-  local height = math.floor(vim.o.lines * config.height)
+  local max_height = math.floor(vim.o.lines * config.height_ratio)
+  local height = math.min(max_height, vim.o.lines - 4)
+  local width = math.min(config.width, vim.o.columns - 4)
   local col = math.floor((vim.o.columns - width) / 2)
   local row = math.floor((vim.o.lines - height) / 2)
 
@@ -232,8 +233,7 @@ function M.glow(file_path)
   end
 
   -- Build command arguments
-  local win_width = math.floor(vim.o.columns * config.width)
-  local cmd_args = { glow_bin, "-s", config.style, "-w", win_width }
+  local cmd_args = { glow_bin, "-s", config.style, "-w", config.width }
   if config.pager then
     table.insert(cmd_args, "-p")
   end

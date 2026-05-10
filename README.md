@@ -66,8 +66,8 @@ Preview also auto-closes when you leave the buffer.
 ```lua
 require("glow").setup({
   glow_path = "",       -- Auto-detected from $PATH; override if needed
-  width = 0.8,          -- Window width (0-1 ratio)
-  height = 0.8,         -- Window height (0-1 ratio)
+  width = 120,          -- Window width in characters (also passed to glow -w)
+  height_ratio = 0.8,   -- Max window height as ratio of screen
   border = "rounded",   -- Border style: "none", "single", "double", "rounded", "solid", "shadow"
   pager = false,        -- Enable pager mode (-p flag)
   style = "dark",       -- Color style: "dark", "light", "notty"
